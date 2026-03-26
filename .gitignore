@@ -1,0 +1,52 @@
+# CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CMakeScripts/
+*.cmake
+
+# macOS
+.DS_Store
+*.dSYM/
+*.dSYM.dSYM/
+*.app
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.a
+*.so
+*.dylib
+
+# IDE files
+CMakeLists.txt.user
+*.user
+*.userprefs
+
+# Debug/Release directories
+Debug/
+Release/
+x64/
+x86/
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
