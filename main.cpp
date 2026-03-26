@@ -10,7 +10,7 @@
 using namespace std;
 
 const int INF = 10000000;
-const double PARAM = 3.0;
+const int PARAM = 3;
 
 struct MyGraph {
     vector<vector<int>> adjMatrix;
@@ -182,7 +182,7 @@ vector<int> generateDegrees(int n, RandomGenerator& rng, bool directed) {
     return degrees;
 }
 
-bool buildDirected(const vector<int>& outDegrees, vector<vector<int>>& adjMatrix) {
+bool buildDirected(const vector<int>& outDegrees, vector<vector<int>>& adjMatrix, RandomGenerator& rng) {
     int n = outDegrees.size();
     if (n == 0) return true;
     if (n == 1) {
@@ -203,16 +203,30 @@ bool buildDirected(const vector<int>& outDegrees, vector<vector<int>>& adjMatrix
         int need = remainingOut[i];
         if (need == 0) continue;
         
-        for (int j = i + 1; j < n && need > 0; j++) {
-            adjMatrix[i][j] = 1;
+        vector<int> availablePositions;
+        for (int j = i + 1; j < n; j++) {
+            availablePositions.push_back(j);
+        }
+        
+        while (need > 0 && !availablePositions.empty()) {
+
+            int randomIndex = (static_cast<int>(round(PirsonDistribution(5, rng)))) % availablePositions.size();
+            int position = availablePositions[randomIndex];
+            
+            adjMatrix[i][position] = 1;
+            
+            availablePositions[randomIndex] = availablePositions.back();
+            availablePositions.pop_back();
+            
             need--;
         }
+        
     }
     
     return true;
 }
 
-bool buildUndirected(const vector<int>& degrees, vector<vector<int>>& adjMatrix) {
+bool buildUndirected(const vector<int>& degrees, vector<vector<int>>& adjMatrix, RandomGenerator& rng) {
     int n = degrees.size();
     if (n == 0) return true;
     if (n == 1) {
@@ -223,7 +237,7 @@ bool buildUndirected(const vector<int>& degrees, vector<vector<int>>& adjMatrix)
         return false;
     }
     
-    buildDirected(degrees, adjMatrix);
+    buildDirected(degrees, adjMatrix, rng);
 
     
     for (int i = 0; i < n; i++) {
@@ -276,11 +290,11 @@ void generateGraph(MyGraph& graph, RandomGenerator& rng) {
         vector<int> degrees = generateDegrees(n, rng, directed);
         
         if (!directed) {
-            if (!buildUndirected(degrees, graph.adjMatrix)) {
+            if (!buildUndirected(degrees, graph.adjMatrix, rng)) {
                 continue;
             }
         } else {
-            if (!buildDirected(degrees, graph.adjMatrix)) {
+            if (!buildDirected(degrees, graph.adjMatrix, rng)) {
                 continue;
             }
         }
@@ -515,8 +529,8 @@ void shimbellMethod(MyGraph& graph) {
     }
     
     
-    if (pathLength < 0) {
-        cout << "длина пути должна0быть положительной\n";
+    if (pathLength < 0 || pathLength > n - 1) {
+        cout << "длина пути должна0быть положительной и не превышать n-1\n";
         return;
     }
     
@@ -570,59 +584,65 @@ void countRoutes(MyGraph& graph) {
         return;
     }
     
-    int start, end, length;
+    int start, end;
     cout << "введите начальную вершину: ";
     cin >> start;
     cout << "введите конечную вершину: ";
     cin >> end;
-    cout << "введите длину маршрута: ";
-    cin >> length;
     
-    if (start < 0 || start >= graph.verticesCount || end < 0 || end >= graph.verticesCount) {
+    if (start < 0 || start >= n || end < 0 || end >= n) {
         cout << "неверный номер вершины\n";
-        return;
-    }
-    
-    if (length < 1) {
-        cout << "длина маршрута должна быть положительной\n";
         return;
     }
     
     if (n == 1) {
         if (start == 0 && end == 0) {
-            cout << "\nколичество маршрутов длины " << length 
-                 << " из вершины " << start << " в вершину " << end << ": " 
-                 << (length == 0 ? 1 : 0) << endl;
+            cout << "\nмаршрут из вершины " << start << " в вершину " << end << " существует\n";
+            cout << "общее количество маршрутов (включая путь длины 0): 1\n";
+        } else {
+            cout << "маршрут из вершины " << start << " в вершину " << end << " не существует\n";
         }
         return;
     }
     
-    if (length > graph.verticesCount - 1) {
-        cout << "длина маршрута введена немерно\n";
-        return;
+    // сумма матриц смежности в степенях от 0 до n-1
+    // степень 0 - единичная матрица (путь длины 0)
+    vector<vector<int>> sum(n, vector<int>(n, 0));
+    
+    // добавляем единичную матрицу (пути длины 0)
+    for (int i = 0; i < n; i++) {
+        sum[i][i] = 1;
     }
     
-    // возведение матрицы смежности в степень length
-    vector<vector<int>> power = matrixPower(graph.adjMatrix, length);
+    // возводим в степени от 1 до n-1 и суммируем
+    for (int p = 1; p < n; p++) {
+        vector<vector<int>> power = matrixPower(graph.adjMatrix, p);
+        
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                sum[i][j] += power[i][j];
+            }
+        }
+    }
     
-    // вывод всей матрицы в степени length
-    cout << "\nматрица смежности в степени " << length << ":\n";
+    // вывод матрицы сумм
+    cout << "\nматрица сумм маршрутов (длины от 0 до " << n-1 << "):\n";
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            cout << power[i][j] << " ";
+            cout << sum[i][j] << " ";
         }
         cout << endl;
     }
     
-    // вывод значения для конкретной пары вершин
-    cout << "\nколичество маршрутов длины " << length 
-         << " из вершины " << start << " в вершину " << end << ": " 
-         << power[start][end] << endl;
+    // вывод результата для конкретной пары вершин
+    cout << "\nобщее количество маршрутов из вершины " << start 
+         << " в вершину " << end << " (длины от 0 до " << n-1 << "): " 
+         << sum[start][end] << endl;
     
-    if (power[start][end] == 0) {
-        cout << "маршрутов длины " << length << " не существует\n";
+    if (sum[start][end] == 0) {
+        cout << "маршрутов не существует\n";
     }
-}   
+}
 
 int main() {
     RandomGenerator rng;
