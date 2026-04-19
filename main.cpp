@@ -96,6 +96,24 @@ vector<vector<int>> matrixPower(const vector<vector<int>>& matrix, int power) {
     return result;
 }
 
+// вспомогательная функция для вывода матрицы
+void printMatrix(const vector<vector<int>>& matrix, const string& name) {
+    int n = matrix.size();
+    cout << "\n" << name << ":\n";
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (matrix[i][j] >= 0) {
+                cout << matrix[i][j] << "   ";
+            }
+            if (matrix[i][j] < 0) {
+                cout << matrix[i][j] << "  ";
+            }
+        }
+        cout << endl;
+    }
+}
+
+
 // проверка связности через возведение матрицы в степени
 bool isConnected(const vector<vector<int>>& adjMatrix) {
     int n = adjMatrix.size();
@@ -332,13 +350,8 @@ void generateGraph(MyGraph& graph, RandomGenerator& rng) {
         int edgeCount = countEdges(graph.adjMatrix, directed);
         cout << "\nколичество ребер: " << edgeCount << endl;
         
-        cout << "\nматрица смежности:\n";
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                cout << graph.adjMatrix[i][j] << " ";
-            }
-            cout << endl;
-        }
+        printMatrix(graph.adjMatrix, "матрица смежности");
+
     } else {
         cout << "\nне удалось сгенерировать граф за " << MAX_ATTEMPTS << " попыток\n";
         graph.reset();
@@ -432,22 +445,6 @@ void calculateEccentricity(MyGraph& graph) {
     cout << endl;
 }
 
-// вспомогательная функция для вывода матрицы
-void printMatrix(const vector<vector<int>>& matrix, const string& name) {
-    int n = matrix.size();
-    cout << "\n" << name << ":\n";
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            if (matrix[i][j] == 0 && i != j) {
-                cout << "0 ";
-            } else {
-                cout << matrix[i][j] << " ";
-            }
-        }
-        cout << endl;
-    }
-}
-
 // вспомогательная функция для поиска путей заданной длины
 // тип поиска: 1 - мин, 2 - макс
 vector<vector<int>> findPathsOfLength(const vector<vector<int>>& weightMatrix, int pathLength, int searchType) {
@@ -520,12 +517,12 @@ void generateMatrix(MyGraph& graph, vector<vector<int>>& matrix, const string& m
                         value = -value;
                     }
                 }
-                
                 matrix[i][j] = value;
                 if (!graph.isDirected) {
                     matrix[j][i] = value;
                 }
-            } else {
+            }
+            else {
                 matrix[i][j] = 0;
             }
         }
@@ -535,15 +532,30 @@ void generateMatrix(MyGraph& graph, vector<vector<int>>& matrix, const string& m
 }
 
 void generateWeightMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
-    generateMatrix(graph, graph.weightMatrix, "матрица весов:", weightType, rng);
+    generateMatrix(graph, graph.weightMatrix, "матрица весов", weightType, rng);
 }
 
 void generateCostMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
-    generateMatrix(graph, graph.costMatrix, "матрица стоимостей:", weightType, rng);
+    generateMatrix(graph, graph.costMatrix, "матрица стоимостей", weightType, rng);
 }
 
 void generateCapacityMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
-    generateMatrix(graph, graph.capacityMatrix, "пропускной способностей:", weightType, rng);
+    generateMatrix(graph, graph.capacityMatrix, "пропускной способностей", weightType, rng);
+}
+
+void initWeightMatrix(MyGraph& graph) {
+    int weightType;
+    cout << "выберите тип весов:\n";
+    cout << "1 - только положительные\n";
+    cout << "2 - только отрицательные\n";
+    cout << "3 - смешанные\n";
+    cout << "выбор: ";
+    cin >> weightType;
+    
+    RandomGenerator rng;
+    
+    cout << "\nгенерация весовой матрицы:\n";
+    generateWeightMatrix(graph, weightType, rng);
 }
 
 void shimbellMethod(MyGraph& graph) {
@@ -559,7 +571,6 @@ void shimbellMethod(MyGraph& graph) {
             cout << "пустой граф\n";
             return;
         }
-        cout << "граф с одной вершиной: все пути нулевые\n";
         return;
     }
     
@@ -585,21 +596,7 @@ void shimbellMethod(MyGraph& graph) {
         return;
     }
     
-    // выбор типа весов
-    int weightType;
-    cout << "выберите тип весов:\n";
-    cout << "1 - только положительные\n";
-    cout << "2 - только отрицательные\n";
-    cout << "3 - смешанные\n";
-    cout << "выбор: ";
-    cin >> weightType;
-    
-    RandomGenerator rng;
-    
-    cout << "\nгенерация весовой матрицы:\n";
-    generateWeightMatrix(graph, weightType, rng);
-    
-    printMatrix(graph.weightMatrix, "матрица весов");
+    initWeightMatrix(graph);
 
     // поиск минимальных и максимальных путей
     vector<vector<int>> minResult = findPathsOfLength(graph.weightMatrix, pathLength, 1);
@@ -685,7 +682,8 @@ void depthFirstSearch(const MyGraph& graph) {
         cout << "сначала сгенерируйте граф\n";
         return;
     }
-    
+
+    int iterations = 0;
     int n = graph.verticesCount;
     
     if (n == 0) {
@@ -693,9 +691,16 @@ void depthFirstSearch(const MyGraph& graph) {
         return;
     }
     
-    vector<int> visited(n, 0);
+    int startVertex;
+    cout << "введите начальную вершину: ";
+    cin >> startVertex;
     
-    int startVertex = 0;
+    if (startVertex < 0 || startVertex >= n) {
+        cout << "неверный номер вершины\n";
+        return;
+    }
+    
+    vector<int> visited(n, 0);
     
     stack<int> st;
     
@@ -719,9 +724,10 @@ void depthFirstSearch(const MyGraph& graph) {
                     visited[w] = 1;
                 }
             }
+            iterations++;
         }
     }
-    cout << endl;
+    cout << endl << "итераций совершено: " << iterations << endl;
     
     bool allVisited = true;
     for (int i = 0; i < n; i++) {
@@ -745,77 +751,19 @@ void depthFirstSearch(const MyGraph& graph) {
     }
 }
 
-// алгоритм дейкстры для графов с отрицательными весами
-vector<int> dijkstraNegative(const MyGraph& graph, int start, vector<int>& dist, vector<int>& parent) {
-    int n = graph.verticesCount;
-    dist.assign(n, INF);
-    parent.assign(n, -1);
-    vector<bool> visited(n, false);
-    
-    dist[start] = 0;
-    
-    for (int iter = 0; iter < n; iter++) {
-        // находим непосещенную вершину с минимальным расстоянием
-        int u = -1;
-        int minDist = INF;
-        
-        for (int i = 0; i < n; i++) {
-            if (!visited[i] && dist[i] < minDist) {
-                minDist = dist[i];
-                u = i;
-            }
-        }
-        
-        if (u == -1) break;
-        
-        visited[u] = true;
-        
-        for (int v = 0; v < n; v++) {
-            if (graph.weightMatrix[u][v] != 0 && dist[u] < INF) {
-                int newDist = dist[u] + graph.weightMatrix[u][v];
-                if (newDist < dist[v]) {
-                    dist[v] = newDist;
-                    parent[v] = u;
-                }
-            }
-        }
-    }
-    
-    return dist;
-}
-
-vector<int> getPath(int start, int end, const vector<int>& parent) {
-    vector<int> path;
-    if (parent[end] == -1 && start != end) {
-        return path;
-    }
-    
-    int current = end;
-    while (current != -1) {
-        path.push_back(current);
-        current = parent[current];
-    }
-    
-    reverse(path.begin(), path.end());
-    return path;
-}
-
-void shortestPath(MyGraph& graph) {
+void dijkstraNegative(MyGraph& graph) {
     if (!graph.isGenerated) {
         cout << "сначала сгенерируйте граф\n";
         return;
     }
     
     int n = graph.verticesCount;
-    
-    if (n <= 1) {
-        if (n == 0) {
-            cout << "пустой граф\n";
-            return;
-        }
-        cout << "граф с одной вершиной: расстояние 0, путь: 0\n";
+    if (n == 0) {
+        cout << "пустой граф\n";
         return;
     }
+    
+    initWeightMatrix(graph);
     
     int start, end;
     cout << "введите начальную вершину: ";
@@ -828,74 +776,70 @@ void shortestPath(MyGraph& graph) {
         return;
     }
     
-    int weightType;
-    cout << "выберите тип весов:\n";
-    cout << "1 - только положительные\n";
-    cout << "2 - только отрицательные\n";
-    cout << "3 - смешанные (случайный знак)\n";
-    cout << "выбор: ";
-    cin >> weightType;
+    vector<int> dist(n, INF);
+    vector<int> prev(n, -1);
+    vector<bool> inQueue(n, false);
     
-    RandomGenerator rng;
+    using pii = pair<int, int>;
+    priority_queue<pii, vector<pii>, greater<pii>> pq;
+
+    int iterations = 0;
     
-    // генерация весовой матрицы
-    generateWeightMatrix(graph, weightType, rng);
+    dist[start] = 0;
+    pq.push({0, start});
+    inQueue[start] = true;
     
-    // вывод весовой матрицы
-    printMatrix(graph.weightMatrix, "весовая матрица");
-    
-    vector<int> dist, parent;
-    dijkstraNegative(graph, start, dist, parent);
-    
-    // вывод вектора расстояний
+    while (!pq.empty()) {
+        auto [d, u] = pq.top();
+        pq.pop();
+        
+        if (d != dist[u]) continue;
+        inQueue[u] = false;
+        
+        for (int v = 0; v < n; v++) {
+            if (graph.adjMatrix[u][v] == 1) {
+                int weight = graph.weightMatrix[u][v];
+                if (dist[u] + weight < dist[v]) {
+                    dist[v] = dist[u] + weight;
+                    prev[v] = u;
+                    if (!inQueue[v]) {
+                        pq.push({dist[v], v});
+                        inQueue[v] = true;
+                    }
+                }
+            }
+            iterations++;
+        }
+    }
+
     cout << "\nвектор расстояний от вершины " << start << ":\n";
     for (int i = 0; i < n; i++) {
-        if (dist[i] == INF) {
-            cout << "вершина " << i << ": INF\n";
-        } else {
-            cout << "вершина " << i << ": " << dist[i] << endl;
-        }
-    }
-    
-    // вывод кратчайшего пути до конечной вершины
-    cout << "\nкратчайший путь из " << start << " в " << end << ":\n";
-    
-    if (dist[end] == INF) {
-        cout << "путь не существует\n";
-    } else {
-        cout << "расстояние: " << dist[end] << endl;
-        
-        vector<int> path = getPath(start, end, parent);
-        cout << "путь: ";
-        for (size_t i = 0; i < path.size(); i++) {
-            cout << path[i];
-            if (i < path.size() - 1) cout << " -> ";
-        }
+        cout << "вершина " << i << ": ";
+        if (dist[i] == INF) cout << "INF";
+        else cout << dist[i];
         cout << endl;
     }
-}
-
-void generateFlowMatrices(MyGraph& graph, RandomGenerator& rng) {
-    if (!graph.isGenerated) {
-        cout << "сначала сгенерируйте граф\n";
+    
+    if (dist[end] == INF) {
+        cout << "\nпуть из вершины " << start << " в вершину " << end << " не существует\n";
         return;
     }
     
-    if (!graph.isDirected) {
-        cout << "ошибка: граф должен быть ориентированным\n";
-        return;
+    vector<int> path;
+    for (int v = end; v != -1; v = prev[v]) {
+        path.push_back(v);
     }
+    reverse(path.begin(), path.end());
     
-    int weightType;
-    cout << "выберите тип значений:\n";
-    cout << "1 - только положительные\n";
-    cout << "2 - только отрицательные\n";
-    cout << "3 - смешанные (случайный знак)\n";
-    cout << "выбор: ";
-    cin >> weightType;
-    
-    generateCostMatrix(graph, weightType, rng);
-    generateCapacityMatrix(graph, weightType, rng);
+    cout << "\nкратчайший путь из вершины " << start << " в вершину " << end << ":\n";
+    cout << "расстояние: " << dist[end] << endl;
+    cout << "итераций совершено: " << iterations << endl;
+    cout << "путь: ";
+    for (size_t i = 0; i < path.size(); i++) {
+        cout << path[i];
+        if (i < path.size() - 1) cout << " -> ";
+    }
+    cout << endl;
 }
 
 int main() {
@@ -909,8 +853,7 @@ int main() {
         cout << "3. метод шимбелла \n";
         cout << "4. подсчет маршрутов\n";
         cout << "5. обход графа в глубину (dfs)\n";
-        cout << "6. кратчайший путь (дейкстра)\n";
-        cout << "7. генерация матриц стоимости и пропускной способности\n";
+        cout << "6. поиск кратчайшего пути (Дейкстра)\n";
         cout << "0. выход\n";
         cout << "выбор: ";
         
@@ -938,11 +881,7 @@ int main() {
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 6:
-                if (graph.isGenerated) shortestPath(graph);
-                else cout << "сначала сгенерируйте граф\n";
-                break;
-            case 7:
-                if (graph.isGenerated) generateFlowMatrices(graph, rng);
+                if (graph.isGenerated) dijkstraNegative(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 0:
