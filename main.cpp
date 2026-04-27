@@ -6,6 +6,7 @@
 #include <numeric>
 #include <queue>
 #include <stack>
+#include <iomanip>
 
 using namespace std;
 
@@ -16,14 +17,19 @@ struct MyGraph {
     vector<vector<int>> adjMatrix;
     vector<vector<int>> distMatrix;
     vector<vector<int>> weightMatrix;
-    vector<vector<int>> costMatrix; 
+    vector<vector<int>> costMatrix;
     vector<vector<int>> capacityMatrix;
+    vector<vector<int>> flowMatrix;
     int verticesCount;
     bool isGenerated;
     bool isDirected;
-    
-    MyGraph() : verticesCount(0), isGenerated(false), isDirected(false) {}
-    
+    int lastMaxFlow;
+    int lastSource;
+    int lastSink;
+
+    MyGraph() : verticesCount(0), isGenerated(false), isDirected(false),
+                lastMaxFlow(0), lastSource(-1), lastSink(-1) {}
+
     void initMatrices(int n, bool directed = false) {
         verticesCount = n;
         isDirected = directed;
@@ -32,9 +38,13 @@ struct MyGraph {
         weightMatrix.assign(n, vector<int>(n, 0));
         costMatrix.assign(n, vector<int>(n, 0));
         capacityMatrix.assign(n, vector<int>(n, 0));
+        flowMatrix.assign(n, vector<int>(n, 0));
+        lastMaxFlow = 0;
+        lastSource = -1;
+        lastSink = -1;
         isGenerated = true;
     }
-    
+
     void reset() {
         verticesCount = 0;
         isGenerated = false;
@@ -44,6 +54,10 @@ struct MyGraph {
         weightMatrix.clear();
         costMatrix.clear();
         capacityMatrix.clear();
+        flowMatrix.clear();
+        lastMaxFlow = 0;
+        lastSource = -1;
+        lastSink = -1;
     }
 };
 
@@ -51,12 +65,17 @@ class RandomGenerator {
 private:
     mt19937 gen;
     normal_distribution<> normalDistrubution;
+    uniform_int_distribution<int> boolDist;
 
 public:
-    RandomGenerator() : gen(random_device{}()), normalDistrubution(0.0, 1) {}
-    
+    RandomGenerator() : gen(random_device{}()), normalDistrubution(0.0, 1), boolDist(0, 1) {}
+
     double getNormal() {
         return normalDistrubution(gen);
+    }
+
+    bool getBool() {
+        return boolDist(gen);
     }
 };
 
@@ -100,44 +119,49 @@ vector<vector<int>> matrixPower(const vector<vector<int>>& matrix, int power) {
 void printMatrix(const vector<vector<int>>& matrix, const string& name) {
     int n = matrix.size();
     cout << "\n" << name << ":\n";
+
+    int colW = 4;
+    int labelW = 3;
+
+    cout << string(labelW, ' ');
+    for (int j = 0; j < n; j++) {
+        cout << setw(colW) << j;
+    }
+    cout << "\n" << string(labelW, ' ') << string(n * colW, '-') << "\n";
+
     for (int i = 0; i < n; i++) {
+        cout << setw(labelW - 1) << i << "|";
         for (int j = 0; j < n; j++) {
-            if (matrix[i][j] >= 0) {
-                cout << matrix[i][j] << "   ";
-            }
-            if (matrix[i][j] < 0) {
-                cout << matrix[i][j] << "  ";
-            }
+            cout << setw(colW) << matrix[i][j];
         }
-        cout << endl;
+        cout << "\n";
     }
 }
 
-
-// проверка связности через возведение матрицы в степени
+// проверка связности через BFS от вершины 0
 bool isConnected(const vector<vector<int>>& adjMatrix) {
     int n = adjMatrix.size();
     if (n <= 1) return true;
-    
-    vector<vector<int>> sum(n, vector<int>(n, 0));
-    
-    for (int p = 1; p < n; p++) {
-        vector<vector<int>> power = matrixPower(adjMatrix, p);
-        
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (power[i][j] > 0) {
-                    sum[i][j] = 1;
-                }
+
+    vector<bool> visited(n, false);
+    queue<int> q;
+    q.push(0);
+    visited[0] = true;
+    int count = 1;
+
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        for (int v = 0; v < n; v++) {
+            if (adjMatrix[u][v] == 1 && !visited[v]) {
+                visited[v] = true;
+                q.push(v);
+                count++;
             }
         }
     }
-    
-    for (int j = 1; j < n; j++) {
-        if (sum[0][j] == 0) return false;
-    }
-    
-    return true;
+
+    return count == n;
 }
 
 // подсчет количества ребер в графе
@@ -513,7 +537,7 @@ void generateMatrix(MyGraph& graph, vector<vector<int>>& matrix, const string& m
                 } else if (weightType == 2) {
                     value = -abs(value);
                 } else if (weightType == 3) {
-                    if (rand() % 2 == 0) {
+                    if (rng.getBool()) {
                         value = -value;
                     }
                 }
@@ -536,11 +560,7 @@ void generateWeightMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) 
 }
 
 void generateCostMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
-    generateMatrix(graph, graph.costMatrix, "матрица стоимостей", weightType, rng);
-}
-
-void generateCapacityMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
-    generateMatrix(graph, graph.capacityMatrix, "пропускной способностей", weightType, rng);
+    generateMatrix(graph, graph.costMatrix, "матрица стоимостей", 1, rng);
 }
 
 void initWeightMatrix(MyGraph& graph) {
@@ -728,79 +748,34 @@ void depthFirstSearch(const MyGraph& graph) {
         }
     }
     cout << endl << "итераций совершено: " << iterations << endl;
-    
-    bool allVisited = true;
-    for (int i = 0; i < n; i++) {
-        if (visited[i] == 0) {
-            allVisited = false;
-            break;
-        }
-    }
-    
-    if (allVisited) {
-        cout << "граф связный (все вершины посещены)\n";
-    } else {
-        cout << "граф несвязный (не все вершины посещены)\n";
-        cout << "непосещенные вершины: ";
-        for (int i = 0; i < n; i++) {
-            if (visited[i] == 0) {
-                cout << i << " ";
-            }
-        }
-        cout << endl;
-    }
 }
 
-void dijkstraNegative(MyGraph& graph) {
-    if (!graph.isGenerated) {
-        cout << "сначала сгенерируйте граф\n";
-        return;
-    }
-    
-    int n = graph.verticesCount;
-    if (n == 0) {
-        cout << "пустой граф\n";
-        return;
-    }
-    
-    initWeightMatrix(graph);
-    
-    int start, end;
-    cout << "введите начальную вершину: ";
-    cin >> start;
-    cout << "введите конечную вершину: ";
-    cin >> end;
-    
-    if (start < 0 || start >= n || end < 0 || end >= n) {
-        cout << "неверный номер вершины\n";
-        return;
-    }
-    
+// возвращает {dist[], prev[]} от источника
+pair<vector<int>, vector<int>> dijkstra(int n, int source, const vector<vector<int>>& adjMatrix, const vector<vector<int>>& weightMatrix)
+{
     vector<int> dist(n, INF);
     vector<int> prev(n, -1);
     vector<bool> inQueue(n, false);
-    
+
     using pii = pair<int, int>;
     priority_queue<pii, vector<pii>, greater<pii>> pq;
 
-    int iterations = 0;
-    
-    dist[start] = 0;
-    pq.push({0, start});
-    inQueue[start] = true;
-    
+    dist[source] = 0;
+    pq.push({0, source});
+    inQueue[source] = true;
+
     while (!pq.empty()) {
         auto [d, u] = pq.top();
         pq.pop();
-        
+
         if (d != dist[u]) continue;
         inQueue[u] = false;
-        
+
         for (int v = 0; v < n; v++) {
-            if (graph.adjMatrix[u][v] == 1) {
-                int weight = graph.weightMatrix[u][v];
-                if (dist[u] + weight < dist[v]) {
-                    dist[v] = dist[u] + weight;
+            if (adjMatrix[u][v] == 1) {
+                int w = weightMatrix[u][v];
+                if (dist[u] + w < dist[v]) {
+                    dist[v] = dist[u] + w;
                     prev[v] = u;
                     if (!inQueue[v]) {
                         pq.push({dist[v], v});
@@ -808,9 +783,38 @@ void dijkstraNegative(MyGraph& graph) {
                     }
                 }
             }
-            iterations++;
         }
     }
+
+    return {dist, prev};
+}
+
+void dijkstraUI(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n == 0) {
+        cout << "пустой граф\n";
+        return;
+    }
+
+    initWeightMatrix(graph);
+
+    int start, end;
+    cout << "введите начальную вершину: ";
+    cin >> start;
+    cout << "введите конечную вершину: ";
+    cin >> end;
+
+    if (start < 0 || start >= n || end < 0 || end >= n) {
+        cout << "неверный номер вершины\n";
+        return;
+    }
+
+    auto [dist, prev] = dijkstra(n, start, graph.adjMatrix, graph.weightMatrix);
 
     cout << "\nвектор расстояний от вершины " << start << ":\n";
     for (int i = 0; i < n; i++) {
@@ -819,27 +823,318 @@ void dijkstraNegative(MyGraph& graph) {
         else cout << dist[i];
         cout << endl;
     }
-    
+
     if (dist[end] == INF) {
         cout << "\nпуть из вершины " << start << " в вершину " << end << " не существует\n";
         return;
     }
-    
+
     vector<int> path;
-    for (int v = end; v != -1; v = prev[v]) {
+    for (int v = end; v != -1; v = prev[v])
         path.push_back(v);
-    }
     reverse(path.begin(), path.end());
-    
+
     cout << "\nкратчайший путь из вершины " << start << " в вершину " << end << ":\n";
     cout << "расстояние: " << dist[end] << endl;
-    cout << "итераций совершено: " << iterations << endl;
     cout << "путь: ";
     for (size_t i = 0; i < path.size(); i++) {
         cout << path[i];
         if (i < path.size() - 1) cout << " -> ";
     }
     cout << endl;
+}
+
+struct LabelInfo {
+    char sign;
+    int neighbor;
+    int delta;
+};
+
+void fordFulkerson(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n == 0) return;
+
+    RandomGenerator rng;
+    generateMatrix(graph, graph.capacityMatrix, "матрица пропускных способностей", 1, rng);
+
+    int s, t;
+    cout << "введите источник: ";
+    cin >> s;
+    cout << "введите сток: ";
+    cin >> t;
+
+    if (s < 0 || s >= n || t < 0 || t >= n || s == t) {
+        cout << "неверные вершины\n";
+        return;
+    }
+
+    vector<vector<int>> F(n, vector<int>(n, 0));
+    vector<LabelInfo> P(n);
+    vector<int> S(n);
+    vector<int> N(n);
+    const int INF_VAL = 1e9;
+
+M:
+    for (int v = 0; v < n; v++) {
+        S[v] = 0;
+        N[v] = 0;
+        P[v] = {'+', -1, 0};
+    }
+    S[s] = 1;
+    P[s] = {'+', -1, INF_VAL};
+
+    int a = 0;
+    
+    while (true) {
+        a = 0;
+        
+        for (int v = 0; v < n; v++) {
+            if (S[v] == 1 && N[v] == 0) {
+                for (int u = 0; u < n; u++) {
+                    if (graph.adjMatrix[v][u] == 1) {
+                        if (S[u] == 0 && F[v][u] < graph.capacityMatrix[v][u]) {
+                            S[u] = 1;
+                            int delta = min(P[v].delta, graph.capacityMatrix[v][u] - F[v][u]);
+                            P[u] = {'+', v, delta};
+                            a = 1;
+                        }
+                    }
+                }
+                
+                for (int u = 0; u < n; u++) {
+                    if (graph.adjMatrix[u][v] == 1) {
+                        if (S[u] == 0 && F[u][v] > 0) {
+                            S[u] = 1;
+                            int delta = min(P[v].delta, F[u][v]);
+                            P[u] = {'-', v, delta};
+                            a = 1;
+                        }
+                    }
+                }
+                
+                N[v] = 1;
+            }
+        }
+        
+        if (S[t] == 1) {
+            int delta = P[t].delta;
+            int x = t;
+            while (x != s) {
+                int p_node = P[x].neighbor;
+                if (P[x].sign == '+') {
+                    F[p_node][x] += delta;
+                } else {
+                    F[x][p_node] -= delta;
+                }
+                x = p_node;
+            }
+            goto M;
+        }
+        
+        if (a == 0) break;
+    }
+
+    int maxFlow = 0;
+    for (int j = 0; j < n; j++) {
+        maxFlow += F[s][j];
+    }
+
+    graph.flowMatrix = F;
+    graph.lastMaxFlow = maxFlow;
+    graph.lastSource = s;
+    graph.lastSink = t;
+
+    cout << "\nмаксимальный поток: " << maxFlow << endl;
+    printMatrix(F, "матрица потока F");
+}
+
+pair<vector<int>, vector<int>> bellmanMoore(
+    int n, int source,
+    const vector<vector<int>>& adjMatrix,
+    const vector<vector<int>>& costMatrix)
+{
+    vector<int> dist(n, INF);
+    vector<int> prev(n, -1);
+    vector<bool> inQueue(n, false);
+
+    dist[source] = 0;
+    queue<int> q;
+    q.push(source);
+    inQueue[source] = true;
+
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        inQueue[u] = false;
+
+        for (int v = 0; v < n; v++) {
+            if (adjMatrix[u][v] == 1 && dist[u] < INF) {
+                int nd = dist[u] + costMatrix[u][v];
+                if (nd < dist[v]) {
+                    dist[v] = nd;
+                    prev[v] = u;
+                    if (!inQueue[v]) {
+                        q.push(v);
+                        inQueue[v] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return {dist, prev};
+}
+
+void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+    if (graph.lastMaxFlow <= 0) {
+        cout << "сначала выполните алгоритм Форда-Фалкерсона (пункт 7)\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    int s = graph.lastSource;
+    int t = graph.lastSink;
+    int target = (2 * graph.lastMaxFlow) / 3;
+
+    cout << "\nмаксимальный поток (из предыдущего запуска): " << graph.lastMaxFlow << endl;
+    cout << "целевой поток [2/3 * max] = " << target << endl;
+
+    if (target == 0) {
+        cout << "целевой поток равен 0, вычисление не требуется\n";
+        return;
+    }
+
+    generateCostMatrix(graph, 1, rng);
+
+    vector<vector<int>> flow(n, vector<int>(n, 0));
+    int currentFlow = 0;
+    int totalCost = 0;
+
+    while (currentFlow < target) {
+        vector<vector<int>> modAdj(n, vector<int>(n, 0));
+        vector<vector<int>> modCap(n, vector<int>(n, 0));
+        vector<vector<int>> modCost(n, vector<int>(n, 0));
+        bool hasNegative = false;
+
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (graph.adjMatrix[i][j] == 1) {
+                    if (flow[i][j] > 0) {
+                        modAdj[j][i] = 1;
+                        modCap[j][i] = flow[i][j];
+                        modCost[j][i] = -graph.costMatrix[i][j];
+                        hasNegative = true;
+                    }
+                    if (flow[i][j] < graph.capacityMatrix[i][j]) {
+                        modAdj[i][j] = 1;
+                        modCap[i][j] = graph.capacityMatrix[i][j] - flow[i][j];
+                        modCost[i][j] = graph.costMatrix[i][j];
+                    }
+                }
+            }
+        }
+
+        auto [dist, prev] = hasNegative ? bellmanMoore(n, s, modAdj, modCost) : dijkstra(n, s, modAdj, modCost);
+
+        if (dist[t] == INF) break;
+
+        int delta = target - currentFlow;
+        for (int x = t; x != s; x = prev[x])
+            delta = min(delta, modCap[prev[x]][x]);
+
+        for (int x = t; x != s; x = prev[x]) {
+            int p = prev[x];
+            if (modCost[p][x] >= 0) {
+                flow[p][x] += delta;
+                totalCost += delta * graph.costMatrix[p][x];
+            } else {
+                flow[x][p] -= delta;
+                totalCost -= delta * graph.costMatrix[x][p];
+            }
+        }
+        currentFlow += delta;
+    }
+
+    if (currentFlow < target)
+        cout << "\nне удалось достичь целевого потока. достигнуто: " << currentFlow << endl;
+    else
+        cout << "\nпоток минимальной стоимости найден\n";
+
+    cout << "величина потока: " << currentFlow << endl;
+    cout << "суммарная стоимость: " << totalCost << endl;
+    printMatrix(flow, "матрица потока минимальной стоимости");
+}
+
+double determinant(vector<vector<double>> mat) {
+    int n = mat.size();
+    if (n == 0) return 1.0;
+    double det = 1.0;
+
+    for (int col = 0; col < n; col++) {
+        int pivot = -1;
+        for (int row = col; row < n; row++) {
+            if (fabs(mat[row][col]) > 1e-9) { pivot = row; break; }
+        }
+        if (pivot == -1) return 0.0;
+
+        if (pivot != col) {
+            swap(mat[pivot], mat[col]);
+            det *= -1;
+        }
+
+        det *= mat[col][col];
+        for (int row = col + 1; row < n; row++) {
+            double f = mat[row][col] / mat[col][col];
+            for (int k = col; k < n; k++)
+                mat[row][k] -= f * mat[col][k];
+        }
+    }
+    return det;
+}
+
+void kirchhoff(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+    if (graph.isDirected) {
+        cout << "теорема Кирхгофа применяется только к неориентированным графам\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+
+    if (n <= 1) {
+        cout << "\nчисло остовных деревьев: 1\n";
+        return;
+    }
+
+    vector<vector<int>> B(n, vector<int>(n, 0));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            if (i != j && graph.adjMatrix[i][j] == 1) {
+                B[i][j] = -1;
+                B[i][i]++;
+            }
+
+    printMatrix(B, "матрица Кирхгофа B(G)");
+
+    vector<vector<double>> minor(n - 1, vector<double>(n - 1));
+    for (int i = 1; i < n; i++)
+        for (int j = 1; j < n; j++)
+            minor[i - 1][j - 1] = B[i][j];
+
+    long long result = (long long)round(determinant(minor));
+    cout << "\nчисло остовных деревьев: " << result << endl;
 }
 
 int main() {
@@ -854,6 +1149,9 @@ int main() {
         cout << "4. подсчет маршрутов\n";
         cout << "5. обход графа в глубину (dfs)\n";
         cout << "6. поиск кратчайшего пути (Дейкстра)\n";
+        cout << "7. алгоритм Форда-Фалкерсона\n";
+        cout << "8. поток минимальной стоимости [2/3 * max]\n";
+        cout << "9. найти число остовных деревьев по т. Кирхгофа\n";
         cout << "0. выход\n";
         cout << "выбор: ";
         
@@ -881,8 +1179,18 @@ int main() {
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 6:
-                if (graph.isGenerated) dijkstraNegative(graph);
+                if (graph.isGenerated) dijkstraUI(graph);
                 else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 7:
+                if (graph.isGenerated) fordFulkerson(graph);
+                else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 8:
+                minCostFlowUI(graph, rng);
+                break;
+            case 9:
+                kirchhoff(graph);
                 break;
             case 0:
                 return 0;
