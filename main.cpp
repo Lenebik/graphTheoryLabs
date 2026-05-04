@@ -20,8 +20,14 @@ struct MyGraph {
     vector<vector<int>> costMatrix;
     vector<vector<int>> capacityMatrix;
     vector<vector<int>> flowMatrix;
+    vector<vector<int>> ostAdjMatrix;
+    vector<vector<int>> ostWeightMatrix;
+    vector<int> pruferCode;
     int verticesCount;
     bool isGenerated;
+    bool hasWeights;
+    bool hasCosts;
+    bool hasCapacities;
     bool isDirected;
     int lastMaxFlow;
     int lastSource;
@@ -39,22 +45,33 @@ struct MyGraph {
         costMatrix.assign(n, vector<int>(n, 0));
         capacityMatrix.assign(n, vector<int>(n, 0));
         flowMatrix.assign(n, vector<int>(n, 0));
+        ostAdjMatrix.assign(n, vector<int>(n, 0));
+        ostWeightMatrix.assign(n, vector<int>(n, 0));
+        pruferCode.clear();
         lastMaxFlow = 0;
         lastSource = -1;
         lastSink = -1;
         isGenerated = true;
+        hasWeights = false;
+        hasCosts = false;
+        hasCapacities = false;
     }
 
     void reset() {
         verticesCount = 0;
         isGenerated = false;
         isDirected = false;
+        hasWeights = false;
+        hasCosts = false;
         adjMatrix.clear();
         distMatrix.clear();
         weightMatrix.clear();
         costMatrix.clear();
         capacityMatrix.clear();
         flowMatrix.clear();
+        ostAdjMatrix.clear();
+        ostWeightMatrix.clear();
+        pruferCode.clear();
         lastMaxFlow = 0;
         lastSource = -1;
         lastSink = -1;
@@ -153,7 +170,7 @@ bool isConnected(const vector<vector<int>>& adjMatrix) {
         int u = q.front();
         q.pop();
         for (int v = 0; v < n; v++) {
-            if (adjMatrix[u][v] == 1 && !visited[v]) {
+            if ((adjMatrix[u][v] == 1 || adjMatrix[v][u] == 1) && !visited[v]) {
                 visited[v] = true;
                 q.push(v);
                 count++;
@@ -348,7 +365,10 @@ void generateGraph(MyGraph& graph, RandomGenerator& rng) {
         }
         
         if (!isConnected(graph.adjMatrix)) {
+            cout << "\nБыл сгенерирован не связный гра\n";
             continue;
+        } else {
+            cout << "\nБыл сгенерирован связный граф\n";
         }
         
         int edgeCount = countEdges(graph.adjMatrix, directed);
@@ -561,6 +581,11 @@ void generateWeightMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) 
 
 void generateCostMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
     generateMatrix(graph, graph.costMatrix, "матрица стоимостей", 1, rng);
+    graph.hasCosts = true;
+}
+void generateFlowMatrix(MyGraph& graph, int weightType, RandomGenerator& rng) {
+    generateMatrix(graph, graph.capacityMatrix, "матрица пропускных способностей", 1, rng);
+    graph.hasCapacities = true;
 }
 
 void initWeightMatrix(MyGraph& graph) {
@@ -576,6 +601,8 @@ void initWeightMatrix(MyGraph& graph) {
     
     cout << "\nгенерация весовой матрицы:\n";
     generateWeightMatrix(graph, weightType, rng);
+
+    graph.hasWeights = true;
 }
 
 void shimbellMethod(MyGraph& graph) {
@@ -750,26 +777,21 @@ void depthFirstSearch(const MyGraph& graph) {
     cout << endl << "итераций совершено: " << iterations << endl;
 }
 
-// возвращает {dist[], prev[]} от источника
-pair<vector<int>, vector<int>> dijkstra(int n, int source, const vector<vector<int>>& adjMatrix, const vector<vector<int>>& weightMatrix)
-{
+pair<vector<int>, vector<int>> dijkstra(int n, int source, const vector<vector<int>>& adjMatrix, const vector<vector<int>>& weightMatrix) {
     vector<int> dist(n, INF);
     vector<int> prev(n, -1);
-    vector<bool> inQueue(n, false);
 
     using pii = pair<int, int>;
     priority_queue<pii, vector<pii>, greater<pii>> pq;
 
+    long long iterations = 0;
+
     dist[source] = 0;
     pq.push({0, source});
-    inQueue[source] = true;
 
     while (!pq.empty()) {
         auto [d, u] = pq.top();
         pq.pop();
-
-        if (d != dist[u]) continue;
-        inQueue[u] = false;
 
         for (int v = 0; v < n; v++) {
             if (adjMatrix[u][v] == 1) {
@@ -777,15 +799,14 @@ pair<vector<int>, vector<int>> dijkstra(int n, int source, const vector<vector<i
                 if (dist[u] + w < dist[v]) {
                     dist[v] = dist[u] + w;
                     prev[v] = u;
-                    if (!inQueue[v]) {
-                        pq.push({dist[v], v});
-                        inQueue[v] = true;
-                    }
+                    pq.push({dist[v], v});
                 }
+                iterations++;
             }
         }
     }
 
+    cout << "\nитераций совершено: " << iterations << "\n";
     return {dist, prev};
 }
 
@@ -795,13 +816,27 @@ void dijkstraUI(MyGraph& graph) {
         return;
     }
 
+    if (graph.hasWeights == false) {
+        cout << "граф должен быть взвешенным\n";
+        return;
+    }
+
     int n = graph.verticesCount;
     if (n == 0) {
         cout << "пустой граф\n";
         return;
     }
 
-    initWeightMatrix(graph);
+    if (!graph.isDirected) {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (graph.weightMatrix[i][j] < 0) {
+                    cout << "данный алгоритм не подходит для работы с отрицательными весами в неориентированном графе\n";
+                    return;
+                }
+            }
+        }
+    }
 
     int start, end;
     cout << "введите начальную вершину: ";
@@ -850,28 +885,8 @@ struct LabelInfo {
     int delta;
 };
 
-void fordFulkerson(MyGraph& graph) {
-    if (!graph.isGenerated) {
-        cout << "сначала сгенерируйте граф\n";
-        return;
-    }
-
+void fordFulkerson(MyGraph& graph, int s, int t) {
     int n = graph.verticesCount;
-    if (n == 0) return;
-
-    RandomGenerator rng;
-    generateMatrix(graph, graph.capacityMatrix, "матрица пропускных способностей", 1, rng);
-
-    int s, t;
-    cout << "введите источник: ";
-    cin >> s;
-    cout << "введите сток: ";
-    cin >> t;
-
-    if (s < 0 || s >= n || t < 0 || t >= n || s == t) {
-        cout << "неверные вершины\n";
-        return;
-    }
 
     vector<vector<int>> F(n, vector<int>(n, 0));
     vector<LabelInfo> P(n);
@@ -889,10 +904,10 @@ M:
     P[s] = {'+', -1, INF_VAL};
 
     int a = 0;
-    
+
     while (true) {
         a = 0;
-        
+
         for (int v = 0; v < n; v++) {
             if (S[v] == 1 && N[v] == 0) {
                 for (int u = 0; u < n; u++) {
@@ -905,7 +920,7 @@ M:
                         }
                     }
                 }
-                
+
                 for (int u = 0; u < n; u++) {
                     if (graph.adjMatrix[u][v] == 1) {
                         if (S[u] == 0 && F[u][v] > 0) {
@@ -916,11 +931,11 @@ M:
                         }
                     }
                 }
-                
+
                 N[v] = 1;
             }
         }
-        
+
         if (S[t] == 1) {
             int delta = P[t].delta;
             int x = t;
@@ -935,7 +950,7 @@ M:
             }
             goto M;
         }
-        
+
         if (a == 0) break;
     }
 
@@ -948,9 +963,37 @@ M:
     graph.lastMaxFlow = maxFlow;
     graph.lastSource = s;
     graph.lastSink = t;
+}
 
-    cout << "\nмаксимальный поток: " << maxFlow << endl;
-    printMatrix(F, "матрица потока F");
+void fordFulkersonUI(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+
+    if (graph.hasCapacities == false) {
+        cout << "должна быть создана матрица пропускных способностей\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n == 0) return;
+
+    int s, t;
+    cout << "введите источник: ";
+    cin >> s;
+    cout << "введите сток: ";
+    cin >> t;
+
+    if (s < 0 || s >= n || t < 0 || t >= n || s == t) {
+        cout << "неверные вершины\n";
+        return;
+    }
+
+    fordFulkerson(graph, s, t);
+
+    cout << "\nмаксимальный поток: " << graph.lastMaxFlow << endl;
+    printMatrix(graph.flowMatrix, "матрица потока F");
 }
 
 pair<vector<int>, vector<int>> bellmanMoore(
@@ -991,10 +1034,12 @@ pair<vector<int>, vector<int>> bellmanMoore(
 }
 
 void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
-    if (!graph.isGenerated) {
-        cout << "сначала сгенерируйте граф\n";
+
+    if (graph.hasCapacities == false) {
+        cout << "должна быть создана матрица стоимостей\n";
         return;
     }
+
     if (graph.lastMaxFlow <= 0) {
         cout << "сначала выполните алгоритм Форда-Фалкерсона (пункт 7)\n";
         return;
@@ -1102,10 +1147,7 @@ double determinant(vector<vector<double>> mat) {
 }
 
 void kirchhoff(MyGraph& graph) {
-    if (!graph.isGenerated) {
-        cout << "сначала сгенерируйте граф\n";
-        return;
-    }
+
     if (graph.isDirected) {
         cout << "теорема Кирхгофа применяется только к неориентированным графам\n";
         return;
@@ -1137,6 +1179,223 @@ void kirchhoff(MyGraph& graph) {
     cout << "\nчисло остовных деревьев: " << result << endl;
 }
 
+int findParent(int x, vector<int>& parent) {
+    if (parent[x] != x) {
+        parent[x] = findParent(parent[x], parent);
+    }
+    return parent[x];
+}
+
+void pruferEncode(MyGraph& graph, const vector<vector<int>>& adjMatrix, const vector<vector<int>>& weightMatrix) {
+    int n = adjMatrix.size();
+    graph.pruferCode.clear();
+
+    vector<vector<int>> adj = adjMatrix;
+    vector<int> degree(n, 0);
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (adj[i][j] == 1) {
+                degree[i]++;
+            }
+        }
+    }
+
+    for (int i = 0; i < n - 2; i++) {
+        int leaf = -1;
+        for (int v = 0; v < n; v++) {
+            if (degree[v] == 1) {
+                leaf = v;
+                break;
+            }
+        }
+
+        if (leaf != -1) {
+            int neighbor = -1;
+            for (int v = 0; v < n; v++) {
+                if (adj[leaf][v] == 1) {
+                    neighbor = v;
+                    break;
+                }
+            }
+
+            graph.pruferCode.push_back(neighbor);
+
+            for (int v = 0; v < n; v++) {
+                if (adj[leaf][v] == 1) {
+                    adj[leaf][v] = 0;
+                    adj[v][leaf] = 0;
+                }
+            }
+            degree[leaf] = 0;
+            degree[neighbor]--;
+        }
+    }
+}
+
+void pruferDecode(MyGraph& graph) {
+    int n = graph.verticesCount;
+    const vector<int>& code = graph.pruferCode;
+
+    vector<vector<int>> decodedAdj(n, vector<int>(n, 0));
+    vector<vector<int>> decodedWeight(n, vector<int>(n, 0));
+
+    vector<int> degree(n, 1);
+    for (int v : code) {
+        degree[v]++;
+    }
+
+    vector<pair<int, int>> edges;
+
+    for (int i = 0; i < code.size(); i++) {
+        int leaf = -1;
+        for (int v = 0; v < n; v++) {
+            if (degree[v] == 1) {
+                leaf = v;
+                break;
+            }
+        }
+
+        int neighbor = code[i];
+        decodedAdj[leaf][neighbor] = 1;
+        decodedAdj[neighbor][leaf] = 1;
+
+        int weight = graph.ostWeightMatrix[leaf][neighbor];
+        decodedWeight[leaf][neighbor] = weight;
+        decodedWeight[neighbor][leaf] = weight;
+
+        degree[leaf]--;
+        degree[neighbor]--;
+        edges.push_back({leaf, neighbor});
+    }
+
+    for (int u = 0; u < n; u++) {
+        for (int v = u + 1; v < n; v++) {
+            if (degree[u] == 1 && degree[v] == 1) {
+                decodedAdj[u][v] = 1;
+                decodedAdj[v][u] = 1;
+
+                int weight = graph.ostWeightMatrix[u][v];
+                decodedWeight[u][v] = weight;
+                decodedWeight[v][u] = weight;
+                edges.push_back({u, v});
+                break;
+            }
+        }
+    }
+
+    graph.ostAdjMatrix = decodedAdj;
+    graph.ostWeightMatrix = decodedWeight;
+}
+
+struct Edge {
+    int u, v, weight;
+    bool operator<(const Edge& other) const {
+        return weight < other.weight;
+    }
+};
+
+void kruskal(MyGraph& graph) {
+    int n = graph.verticesCount;
+
+    vector<Edge> edges;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (graph.adjMatrix[i][j] == 1) {
+                edges.push_back({i, j, graph.weightMatrix[i][j]});
+            }
+        }
+    }
+
+    sort(edges.begin(), edges.end());
+
+    vector<int> parent(n);
+    for (int i = 0; i < n; i++) {
+        parent[i] = i;
+    }
+
+    vector<Edge> mst;
+    int k = 0;
+    int edgeCount = edges.size();
+
+    for (int i = 0; i < n - 1; i++) {
+        while (k < edgeCount) {
+            int pu = findParent(edges[k].u, parent);
+            int pv = findParent(edges[k].v, parent);
+
+            if (pu == pv) {
+                k++;
+            } else {
+                break;
+            }
+        }
+
+        if (k < edgeCount) {
+            mst.push_back(edges[k]);
+            int pu = findParent(edges[k].u, parent);
+            int pv = findParent(edges[k].v, parent);
+            parent[pu] = pv;
+            k++;
+        }
+    }
+
+    graph.ostAdjMatrix.assign(n, vector<int>(n, 0));
+    graph.ostWeightMatrix.assign(n, vector<int>(n, 0));
+
+    int totalWeight = 0;
+    for (const auto& edge : mst) {
+        graph.ostAdjMatrix[edge.u][edge.v] = 1;
+        graph.ostAdjMatrix[edge.v][edge.u] = 1;
+        graph.ostWeightMatrix[edge.u][edge.v] = edge.weight;
+        graph.ostWeightMatrix[edge.v][edge.u] = edge.weight;
+        totalWeight += edge.weight;
+    }
+
+    graph.lastMaxFlow = totalWeight;
+}
+
+void kruskalUI(MyGraph& graph) {
+    if (graph.isDirected) {
+        cout << "алгоритм Краскала применяется только к неориентированным графам\n";
+        return;
+    }
+
+    if (!graph.hasWeights) {
+        cout << "граф должен быть взвешенным\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n <= 1) {
+        cout << "минимальный остов: пусто\n";
+        cout << "общий вес: 0\n";
+        return;
+    }
+
+    kruskal(graph);
+
+    cout << "\nобщий вес остова: " << graph.lastMaxFlow << endl;
+
+    cout << "\nминимальный остов (алгоритм Краскала):\n";
+    printMatrix(graph.ostAdjMatrix, "матрица смежности остова");
+    printMatrix(graph.ostWeightMatrix, "матрица весов остова");
+
+    pruferEncode(graph, graph.ostAdjMatrix, graph.ostWeightMatrix);
+
+    cout << "\nкод Прюфера: ";
+    for (int v : graph.pruferCode) {
+        cout << v << " ";
+    }
+    cout << "\n";
+
+    pruferDecode(graph);
+
+    cout << "\nвосстановленный остов (декодирование кода Прюфера):\n";
+    printMatrix(graph.ostAdjMatrix, "матрица смежности восстановленного остова");
+    printMatrix(graph.ostWeightMatrix, "матрица весов восстановленного остова");
+}
+
 int main() {
     RandomGenerator rng;
     MyGraph graph;
@@ -1144,14 +1403,17 @@ int main() {
     while (true) {
         cout << "\nменю:\n";
         cout << "1. сгенерировать граф\n";
-        cout << "2. найти центр и диаметр\n";
-        cout << "3. метод шимбелла \n";
-        cout << "4. подсчет маршрутов\n";
-        cout << "5. обход графа в глубину (dfs)\n";
-        cout << "6. поиск кратчайшего пути (Дейкстра)\n";
-        cout << "7. алгоритм Форда-Фалкерсона\n";
-        cout << "8. поток минимальной стоимости [2/3 * max]\n";
-        cout << "9. найти число остовных деревьев по т. Кирхгофа\n";
+        cout << "2. сгенерировать весовую матрицу\n";
+        cout << "3. сгенерировать матрицы стоимостей и пропускных способностей\n";
+        cout << "4. найти центр и диаметр\n";
+        cout << "5. метод шимбелла \n";
+        cout << "6. подсчет маршрутов\n";
+        cout << "7. обход графа в глубину (dfs)\n";
+        cout << "8. поиск кратчайшего пути (Дейкстра)\n";
+        cout << "9. алгоритм Форда-Фалкерсона\n";
+        cout << "10. поток минимальной стоимости [2/3 * max]\n";
+        cout << "11. найти число остовных деревьев по т. Кирхгофа\n";
+        cout << "12. минимальный остов (алгоритм Краскала)\n";
         cout << "0. выход\n";
         cout << "выбор: ";
         
@@ -1163,34 +1425,45 @@ int main() {
                 generateGraph(graph, rng);
                 break;
             case 2:
-                if (graph.isGenerated) calculateEccentricity(graph);
+                if (graph.isGenerated) initWeightMatrix(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 3:
+                if (graph.isGenerated) {
+                    generateFlowMatrix(graph, 1, rng);
+                    generateCostMatrix(graph, 1, rng);
+                }
+            case 4:
                 if (graph.isGenerated) shimbellMethod(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
-            case 4:
+            case 6:
                 if (graph.isGenerated) countRoutes(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
-            case 5:
+            case 7:
                 if (graph.isGenerated) depthFirstSearch(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
-            case 6:
+            case 8:
                 if (graph.isGenerated) dijkstraUI(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
-            case 7:
-                if (graph.isGenerated) fordFulkerson(graph);
+            case 9:
+                if (graph.isGenerated) fordFulkersonUI(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
-            case 8:
-                minCostFlowUI(graph, rng);
+            case 10:
+                if (graph.isGenerated) minCostFlowUI(graph, rng);
+                else cout << "сначала сгенерируйте граф\n";
                 break;
-            case 9:
-                kirchhoff(graph);
+            case 11:
+                if (graph.isGenerated) kirchhoff(graph);
+                else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 12:
+                if (graph.isGenerated) kruskalUI(graph);
+                else cout << "сначала сгенерируйте граф\n";
                 break;
             case 0:
                 return 0;
