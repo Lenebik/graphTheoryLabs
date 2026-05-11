@@ -618,6 +618,11 @@ void shimbellMethod(MyGraph& graph) {
         }
         return;
     }
+
+    if (!graph.hasWeights) {
+        cout << "ТРебуется сгенерировать весовую матрицу";
+        return;
+    }
     
     int pathLength;
     
@@ -640,8 +645,6 @@ void shimbellMethod(MyGraph& graph) {
         cout << "длина пути должна быть положительной и не превышать n-1\n";
         return;
     }
-    
-    initWeightMatrix(graph);
 
     // поиск минимальных и максимальных путей
     vector<vector<int>> minResult = findPathsOfLength(graph.weightMatrix, pathLength, 1);
@@ -1523,6 +1526,10 @@ int main() {
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 4:
+                if (graph.isGenerated) calculateEccentricity(graph);
+                else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 5:
                 if (graph.isGenerated) shimbellMethod(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
