@@ -6,6 +6,7 @@
 #include <numeric>
 #include <queue>
 #include <stack>
+#include <set>
 #include <iomanip>
 
 using namespace std;
@@ -30,6 +31,7 @@ struct MyGraph {
     bool hasCapacities;
     bool isDirected;
     int lastMaxFlow;
+    int lastMst;
     int lastSource;
     int lastSink;
 
@@ -49,6 +51,7 @@ struct MyGraph {
         ostWeightMatrix.assign(n, vector<int>(n, 0));
         pruferCode.clear();
         lastMaxFlow = 0;
+        lastMst = 0;
         lastSource = -1;
         lastSink = -1;
         isGenerated = true;
@@ -73,6 +76,7 @@ struct MyGraph {
         ostWeightMatrix.clear();
         pruferCode.clear();
         lastMaxFlow = 0;
+        lastMst = 0;
         lastSource = -1;
         lastSink = -1;
     }
@@ -436,7 +440,6 @@ void calculateEccentricity(MyGraph& graph) {
         }
     }
     
-    // алгоритм флойда для поиска кратчайших путей
     for (int k = 0; k < n; k++) {
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
@@ -606,11 +609,6 @@ void initWeightMatrix(MyGraph& graph) {
 }
 
 void shimbellMethod(MyGraph& graph) {
-    if (!graph.isGenerated) {
-        cout << "сначала сгенерируйте граф\n";
-        return;
-    }
-    
     int n = graph.verticesCount;
     
     if (n <= 1) {
@@ -794,6 +792,7 @@ pair<vector<int>, vector<int>> dijkstra(int n, int source, const vector<vector<i
         pq.pop();
 
         for (int v = 0; v < n; v++) {
+            iterations++;
             if (adjMatrix[u][v] == 1) {
                 int w = weightMatrix[u][v];
                 if (dist[u] + w < dist[v]) {
@@ -801,7 +800,6 @@ pair<vector<int>, vector<int>> dijkstra(int n, int source, const vector<vector<i
                     prev[v] = u;
                     pq.push({dist[v], v});
                 }
-                iterations++;
             }
         }
     }
@@ -996,43 +994,6 @@ void fordFulkersonUI(MyGraph& graph) {
     printMatrix(graph.flowMatrix, "матрица потока F");
 }
 
-pair<vector<int>, vector<int>> bellmanMoore(
-    int n, int source,
-    const vector<vector<int>>& adjMatrix,
-    const vector<vector<int>>& costMatrix)
-{
-    vector<int> dist(n, INF);
-    vector<int> prev(n, -1);
-    vector<bool> inQueue(n, false);
-
-    dist[source] = 0;
-    queue<int> q;
-    q.push(source);
-    inQueue[source] = true;
-
-    while (!q.empty()) {
-        int u = q.front();
-        q.pop();
-        inQueue[u] = false;
-
-        for (int v = 0; v < n; v++) {
-            if (adjMatrix[u][v] == 1 && dist[u] < INF) {
-                int nd = dist[u] + costMatrix[u][v];
-                if (nd < dist[v]) {
-                    dist[v] = nd;
-                    prev[v] = u;
-                    if (!inQueue[v]) {
-                        q.push(v);
-                        inQueue[v] = true;
-                    }
-                }
-            }
-        }
-    }
-
-    return {dist, prev};
-}
-
 void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
 
     if (graph.hasCapacities == false) {
@@ -1058,8 +1019,6 @@ void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
         return;
     }
 
-    generateCostMatrix(graph, 1, rng);
-
     vector<vector<int>> flow(n, vector<int>(n, 0));
     int currentFlow = 0;
     int totalCost = 0;
@@ -1068,7 +1027,6 @@ void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
         vector<vector<int>> modAdj(n, vector<int>(n, 0));
         vector<vector<int>> modCap(n, vector<int>(n, 0));
         vector<vector<int>> modCost(n, vector<int>(n, 0));
-        bool hasNegative = false;
 
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
@@ -1077,7 +1035,6 @@ void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
                         modAdj[j][i] = 1;
                         modCap[j][i] = flow[i][j];
                         modCost[j][i] = -graph.costMatrix[i][j];
-                        hasNegative = true;
                     }
                     if (flow[i][j] < graph.capacityMatrix[i][j]) {
                         modAdj[i][j] = 1;
@@ -1088,7 +1045,7 @@ void minCostFlowUI(MyGraph& graph, RandomGenerator& rng) {
             }
         }
 
-        auto [dist, prev] = hasNegative ? bellmanMoore(n, s, modAdj, modCost) : dijkstra(n, s, modAdj, modCost);
+        auto [dist, prev] = dijkstra(n, s, modAdj, modCost);
 
         if (dist[t] == INF) break;
 
@@ -1177,13 +1134,6 @@ void kirchhoff(MyGraph& graph) {
 
     long long result = (long long)round(determinant(minor));
     cout << "\nчисло остовных деревьев: " << result << endl;
-}
-
-int findParent(int x, vector<int>& parent) {
-    if (parent[x] != x) {
-        parent[x] = findParent(parent[x], parent);
-    }
-    return parent[x];
 }
 
 void pruferEncode(MyGraph& graph, const vector<vector<int>>& adjMatrix, const vector<vector<int>>& weightMatrix) {
@@ -1295,6 +1245,13 @@ struct Edge {
     }
 };
 
+int findParent(int x, vector<int>& parent) {
+    if (parent[x] != x) {
+        parent[x] = findParent(parent[x], parent);
+    }
+    return parent[x];
+}
+
 void kruskal(MyGraph& graph) {
     int n = graph.verticesCount;
 
@@ -1352,7 +1309,7 @@ void kruskal(MyGraph& graph) {
         totalWeight += edge.weight;
     }
 
-    graph.lastMaxFlow = totalWeight;
+    graph.lastMst = totalWeight;
 }
 
 void kruskalUI(MyGraph& graph) {
@@ -1375,7 +1332,7 @@ void kruskalUI(MyGraph& graph) {
 
     kruskal(graph);
 
-    cout << "\nобщий вес остова: " << graph.lastMaxFlow << endl;
+    cout << "\nобщий вес остова: " << graph.lastMst << endl;
 
     cout << "\nминимальный остов (алгоритм Краскала):\n";
     printMatrix(graph.ostAdjMatrix, "матрица смежности остова");
@@ -1396,6 +1353,135 @@ void kruskalUI(MyGraph& graph) {
     printMatrix(graph.ostWeightMatrix, "матрица весов восстановленного остова");
 }
 
+void maxIndependentSet(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n == 0) {
+        cout << "пустой граф\n";
+        return;
+    }
+
+    int sourceChoice;
+    cout << "на каком графе искать максимальное независимое множество?\n";
+    cout << "1 - на исходном графе\n";
+    cout << "2 - на остове\n";
+    cout << "выбор: ";
+    cin >> sourceChoice;
+
+    vector<vector<int>> baseAdj;
+    string sourceName;
+    if (sourceChoice == 1) {
+        baseAdj = graph.adjMatrix;
+        sourceName = "исходный граф";
+    } else if (sourceChoice == 2) {
+        bool hasOst = false;
+        for (int i = 0; i < n && !hasOst; i++)
+            for (int j = 0; j < n && !hasOst; j++)
+                if (graph.ostAdjMatrix[i][j] == 1) hasOst = true;
+        if (!hasOst) {
+            cout << "сначала постройте остов (пункт 12)\n";
+            return;
+        }
+        baseAdj = graph.ostAdjMatrix;
+        sourceName = "остов";
+    } else {
+        cout << "неверный выбор\n";
+        return;
+    }
+
+    // симметризованные списки смежности Γ[v]
+    vector<set<int>> gamma(n);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (i != j && (baseAdj[i][j] == 1 || baseAdj[j][i] == 1)) {
+                gamma[i].insert(j);
+            }
+        }
+    }
+
+    vector<vector<int>> S(n + 2);
+    vector<set<int>> Qplus(n + 2);
+    vector<set<int>> Qminus(n + 2);
+
+    int k = 0;
+    for (int v = 0; v < n; v++) Qplus[0].insert(v);
+
+    vector<int> best;
+
+M1:
+    {
+        // шаг вперёд: select v ∈ Q+[k]
+        int v = *Qplus[k].begin();
+        S[k + 1] = S[k];
+        S[k + 1].push_back(v);
+        Qminus[k + 1] = Qminus[k];
+        for (int u : gamma[v]) Qminus[k + 1].erase(u);
+        Qplus[k + 1] = Qplus[k];
+        Qplus[k + 1].erase(v);
+        for (int u : gamma[v]) Qplus[k + 1].erase(u);
+        k++;
+    }
+
+M2:
+    {
+        bool earlyReturn = false;
+        for (int u : Qminus[k]) {
+            bool hasIntersection = false;
+            for (int w : gamma[u]) {
+                if (Qplus[k].count(w)) {
+                    hasIntersection = true;
+                    break;
+                }
+            }
+            if (!hasIntersection) {
+                earlyReturn = true;
+                break;
+            }
+        }
+        if (earlyReturn) goto M3;
+
+        if (Qplus[k].empty()) {
+            if (Qminus[k].empty()) {
+                if ((int)S[k].size() > (int)best.size()) {
+                    best = S[k];
+                }
+            }
+            goto M3;
+        } else {
+            goto M1;
+        }
+    }
+
+M3:
+    {
+        // шаг назад
+        if (k == 0) goto END_LOOP;
+        int v = S[k].back();
+        k--;
+        S[k] = S[k + 1];
+        S[k].pop_back();
+        Qminus[k].insert(v);
+        Qplus[k].erase(v);
+        if (k == 0 && Qplus[k].empty()) goto END_LOOP;
+        else goto M2;
+    }
+
+END_LOOP:
+    cout << "\nалгоритм завершён (" << sourceName << ")\n";
+    if (best.empty()) {
+        cout << "максимальное независимое множество не найдено\n";
+        return;
+    }
+    cout << "размер: " << best.size() << "\n";
+    cout << "вершины: { ";
+    for (int v : best) cout << v << " ";
+    cout << "}\n";
+}
+
 int main() {
     RandomGenerator rng;
     MyGraph graph;
@@ -1414,6 +1500,7 @@ int main() {
         cout << "10. поток минимальной стоимости [2/3 * max]\n";
         cout << "11. найти число остовных деревьев по т. Кирхгофа\n";
         cout << "12. минимальный остов (алгоритм Краскала)\n";
+        cout << "13. максимальное независимое множество вершин\n";
         cout << "0. выход\n";
         cout << "выбор: ";
         
@@ -1432,7 +1519,9 @@ int main() {
                 if (graph.isGenerated) {
                     generateFlowMatrix(graph, 1, rng);
                     generateCostMatrix(graph, 1, rng);
-                }
+                } 
+                else cout << "сначала сгенерируйте граф\n";
+                break;
             case 4:
                 if (graph.isGenerated) shimbellMethod(graph);
                 else cout << "сначала сгенерируйте граф\n";
@@ -1463,6 +1552,10 @@ int main() {
                 break;
             case 12:
                 if (graph.isGenerated) kruskalUI(graph);
+                else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 13:
+                if (graph.isGenerated) maxIndependentSet(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 0:
