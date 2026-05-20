@@ -23,7 +23,7 @@ struct MyGraph {
     vector<vector<int>> flowMatrix;
     vector<vector<int>> ostAdjMatrix;
     vector<vector<int>> ostWeightMatrix;
-    vector<int> pruferCode;
+    vector<pair<int, int>> pruferCode; // пары (сосед, вес ребра), длина n-1
     int verticesCount;
     bool isGenerated;
     bool hasWeights;
@@ -633,7 +633,7 @@ void shimbellMethod(MyGraph& graph) {
         // единицы на главной диагонали, остальные 0
         vector<vector<int>> identityMatrix(n, vector<int>(n, 0));
         for (int i = 0; i < n; i++) {
-            identityMatrix[i][i] = 1;
+            identityMatrix[i][i] = 0;
         }
         
         printMatrix(identityMatrix, "матрица минимальных путей");
@@ -1154,7 +1154,7 @@ void pruferEncode(MyGraph& graph, const vector<vector<int>>& adjMatrix, const ve
         }
     }
 
-    for (int i = 0; i < n - 2; i++) {
+    for (int i = 0; i < n - 1; i++) {
         int leaf = -1;
         for (int v = 0; v < n; v++) {
             if (degree[v] == 1) {
@@ -1172,7 +1172,8 @@ void pruferEncode(MyGraph& graph, const vector<vector<int>>& adjMatrix, const ve
                 }
             }
 
-            graph.pruferCode.push_back(neighbor);
+            // кодируем пару: сосед и вес удаляемого ребра (leaf, neighbor)
+            graph.pruferCode.push_back({neighbor, weightMatrix[leaf][neighbor]});
 
             for (int v = 0; v < n; v++) {
                 if (adj[leaf][v] == 1) {
@@ -1188,14 +1189,18 @@ void pruferEncode(MyGraph& graph, const vector<vector<int>>& adjMatrix, const ve
 
 void pruferDecode(MyGraph& graph) {
     int n = graph.verticesCount;
-    const vector<int>& code = graph.pruferCode;
+    const vector<pair<int, int>>& code = graph.pruferCode;
 
     vector<vector<int>> decodedAdj(n, vector<int>(n, 0));
     vector<vector<int>> decodedWeight(n, vector<int>(n, 0));
 
     vector<int> degree(n, 1);
-    for (int v : code) {
-        degree[v]++;
+    for (const auto& p : code) {
+        degree[p.first]++;
+    }
+    if (!code.empty()) {
+        int r = code.back().first;
+        degree[r]--;
     }
 
     vector<pair<int, int>> edges;
@@ -1209,32 +1214,17 @@ void pruferDecode(MyGraph& graph) {
             }
         }
 
-        int neighbor = code[i];
+        int neighbor = code[i].first;
         decodedAdj[leaf][neighbor] = 1;
         decodedAdj[neighbor][leaf] = 1;
 
-        int weight = graph.ostWeightMatrix[leaf][neighbor];
+        int weight = code[i].second;
         decodedWeight[leaf][neighbor] = weight;
         decodedWeight[neighbor][leaf] = weight;
 
         degree[leaf]--;
         degree[neighbor]--;
         edges.push_back({leaf, neighbor});
-    }
-
-    for (int u = 0; u < n; u++) {
-        for (int v = u + 1; v < n; v++) {
-            if (degree[u] == 1 && degree[v] == 1) {
-                decodedAdj[u][v] = 1;
-                decodedAdj[v][u] = 1;
-
-                int weight = graph.ostWeightMatrix[u][v];
-                decodedWeight[u][v] = weight;
-                decodedWeight[v][u] = weight;
-                edges.push_back({u, v});
-                break;
-            }
-        }
     }
 
     graph.ostAdjMatrix = decodedAdj;
@@ -1343,9 +1333,9 @@ void kruskalUI(MyGraph& graph) {
 
     pruferEncode(graph, graph.ostAdjMatrix, graph.ostWeightMatrix);
 
-    cout << "\nкод Прюфера: ";
-    for (int v : graph.pruferCode) {
-        cout << v << " ";
+    cout << "\nкод Прюфера (вершина, вес), длина n-1: ";
+    for (const auto& p : graph.pruferCode) {
+        cout << "(" << p.first << ", " << p.second << ") ";
     }
     cout << "\n";
 
@@ -1395,9 +1385,7 @@ void maxIndependentSet(MyGraph& graph) {
         cout << "неверный выбор\n";
         return;
     }
-
-    // симметризованные списки смежности Γ[v]
-    vector<set<int>> gamma(n);
+    vector<set<int>> gamma(n); // список соседей вершини i
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             if (i != j && (baseAdj[i][j] == 1 || baseAdj[j][i] == 1)) {
@@ -1406,9 +1394,9 @@ void maxIndependentSet(MyGraph& graph) {
         }
     }
 
-    vector<vector<int>> S(n + 2);
-    vector<set<int>> Qplus(n + 2);
-    vector<set<int>> Qminus(n + 2);
+    vector<vector<int>> S(n + 2); // уже добавленные вершины в множество
+    vector<set<int>> Qplus(n + 2); // кандидаты
+    vector<set<int>> Qminus(n + 2); // запрещенные вершины
 
     int k = 0;
     for (int v = 0; v < n; v++) Qplus[0].insert(v);
@@ -1449,7 +1437,7 @@ M2:
 
         if (Qplus[k].empty()) {
             if (Qminus[k].empty()) {
-                if ((int)S[k].size() > (int)best.size()) {
+                if ((int)S[k].size() > (int)best.size()) { // нашли новое мнм, сравниваем по размеру
                     best = S[k];
                 }
             }
@@ -1485,6 +1473,269 @@ END_LOOP:
     cout << "}\n";
 }
 
+// проверка эйлеровости, модификация при необходимости и построение
+// эйлерова цикла (алгоритм Флери) для неориентированного графа
+void eulerCycle(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+    if (graph.isDirected) {
+        cout << "эйлеров цикл строится только для неориентированного графа\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n <= 1) {
+        cout << "граф слишком мал — эйлеров цикл тривиален (пуст)\n";
+        return;
+    }
+
+    // работаем на копии, исходный граф не изменяем
+    vector<vector<int>> adj = graph.adjMatrix;
+
+    // текущая степень вершины v по матрице adj
+    auto degreeOf = [&](int v) {
+        int d = 0;
+        for (int u = 0; u < n; u++) d += adj[v][u];
+        return d;
+    };
+
+    // поиск вершин нечётной степени
+    vector<int> odd;
+    for (int v = 0; v < n; v++) {
+        if (degreeOf(v) % 2 != 0) odd.push_back(v);
+    }
+
+    if (odd.empty()) {
+        cout << "все степени чётные — граф ЭЙЛЕРОВ, модификация не требуется\n";
+    } else {
+        cout << "вершин с нечётной степенью: " << odd.size() << " -> ";
+        for (int v : odd) cout << v << " ";
+        cout << "\nграф НЕ эйлеров, выполняется модификация:\n";
+
+        // обрабатываем нечётные вершины парами: каждая операция исправляет
+        // чётность ровно двух вершин, а их количество всегда чётно
+        for (size_t i = 0; i + 1 < odd.size(); i += 2) {
+            int a = odd[i], b = odd[i + 1];
+            if (adj[a][b] == 0) {
+                // прямого ребра нет — добавляем его
+                adj[a][b] = adj[b][a] = 1;
+                cout << "  + добавлено ребро (" << a << ", " << b << ")\n";
+            } else {
+                // ребро уже есть — добавляем через промежуточную вершину w
+                // (w получает +2 к степени, её чётность сохраняется)
+                int w = -1;
+                for (int t = 0; t < n; t++) {
+                    if (t != a && t != b && adj[a][t] == 0 && adj[b][t] == 0) {
+                        w = t;
+                        break;
+                    }
+                }
+                if (w != -1) {
+                    adj[a][w] = adj[w][a] = 1;
+                    adj[w][b] = adj[b][w] = 1;
+                    cout << "  + ребро (" << a << ", " << b << ") уже существует; добавлены рёбра ("
+                         << a << ", " << w << ") и (" << w << ", " << b << ") \n";
+                } else {
+                    adj[a][b] = adj[b][a] = 0;
+                    cout << "  - посредник не найден; удалено ребро (" << a << ", " << b << ")\n";
+                }
+            }
+        }
+
+        // повторная проверка чётности
+        vector<int> oddAfter;
+        for (int v = 0; v < n; v++)
+            if (degreeOf(v) % 2 != 0) oddAfter.push_back(v);
+
+        if (!oddAfter.empty()) {
+            cout << "ОШИБКА: после модификации остались нечётные вершины\n";
+            return;
+        }
+        cout << "модификация завершена — все степени чётные\n";
+        printMatrix(adj, "матрица смежности после модификации");
+    }
+
+    // подсчёт рёбер
+    int edgeCount = 0;
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            edgeCount += adj[i][j];
+
+    if (edgeCount == 0) {
+        cout << "\nв графе нет рёбер — эйлеров цикл пуст\n";
+        return;
+    }
+
+    // стартовая вершина — любая со степенью > 0
+    int start = 0;
+    for (int v = 0; v < n; v++) {
+        if (degreeOf(v) > 0) { start = v; break; }
+    }
+
+    // списки смежности Γ[v] по модифицированной матрице
+    vector<set<int>> gamma(n);
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            if (adj[i][j] == 1) gamma[i].insert(j);
+
+    // S — стек вершин
+    vector<int> cycle;
+    stack<int> S;
+    S.push(start); // v -> S
+
+    while (!S.empty()) {
+        int v = S.top();
+        if (gamma[v].empty()) {
+            S.pop();
+            cycle.push_back(v);
+        } else {
+            int u = *gamma[v].begin();
+            S.push(u);
+            gamma[v].erase(u);
+            gamma[u].erase(v);
+        }
+    }
+
+    cout << "\n=== Эйлеров цикл (алгоритм Флери) ===\n";
+    cout << "длина (рёбер): " << cycle.size() - 1 << "\n";
+    cout << "цикл: ";
+    for (size_t i = 0; i < cycle.size(); i++) {
+        cout << cycle[i];
+        if (i + 1 < cycle.size()) cout << " -> ";
+    }
+    cout << "\n";
+}
+
+// чтобы (u,v) и (v,u) считались одним ребром
+static pair<int, int> normEdge(int u, int v) {
+    return {min(u, v), max(u, v)};
+}
+
+// вывод множества рёбер разреза
+static void printCut(const set<pair<int, int>>& cut) {
+    cout << "{ ";
+    for (const auto& e : cut) {
+        cout << "(" << e.first << "," << e.second << ") ";
+    }
+    cout << "}";
+}
+
+// фундаментальная система разрезов на основе остова
+void fundamentalCuts(MyGraph& graph) {
+    if (!graph.isGenerated) {
+        cout << "сначала сгенерируйте граф\n";
+        return;
+    }
+    if (graph.isDirected) {
+        cout << "разрезы строятся только для неориентированного графа\n";
+        return;
+    }
+
+    int n = graph.verticesCount;
+    if (n <= 1) {
+        cout << "граф слишком мал — разрезов нет\n";
+        return;
+    }
+
+    // проверяем, что остов построен
+    bool hasOst = false;
+    for (int i = 0; i < n && !hasOst; i++)
+        for (int j = 0; j < n && !hasOst; j++)
+            if (graph.ostAdjMatrix[i][j] == 1) hasOst = true;
+    if (!hasOst) {
+        cout << "сначала постройте остов (пункт 12)\n";
+        return;
+    }
+
+    // собираем рёбра остова, их p-1
+    vector<pair<int, int>> treeEdges;
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            if (graph.ostAdjMatrix[i][j] == 1)
+                treeEdges.push_back({i, j});
+
+    int m = treeEdges.size(); // коцикломатическое число = p-1
+
+    // для каждого древесного ребра строим фундаментальный разрез
+    vector<set<pair<int, int>>> cuts(m);
+
+    for (int idx = 0; idx < m; idx++) {
+        int a = treeEdges[idx].first;
+        int b = treeEdges[idx].second;
+
+        // обход по остову БЕЗ ребра (a,b): находим компоненту V1, содержащую a
+        vector<bool> inV1(n, false);
+        queue<int> q;
+        q.push(a);
+        inV1[a] = true;
+
+        while (!q.empty()) {
+            int u = q.front();
+            q.pop();
+            for (int w = 0; w < n; w++) {
+                if (graph.ostAdjMatrix[u][w] == 1 && !inV1[w]) {
+                    // пропускаем удалённое ребро (a,b)
+                    if ((u == a && w == b) || (u == b && w == a)) continue;
+                    inV1[w] = true;
+                    q.push(w);
+                }
+            }
+        }
+
+        // разрез S_e = все рёбра графа G между V1 и V2
+        for (int u = 0; u < n; u++)
+            for (int w = u + 1; w < n; w++)
+                if (graph.adjMatrix[u][w] == 1 && (inV1[u] != inV1[w]))
+                    cuts[idx].insert(normEdge(u, w));
+    }
+
+    // вывод фундаментальной системы разрезов
+    cout << "\n=== Фундаментальная система разрезов ===\n";
+    cout << "коцикломатическое число m*(G) = p - 1 = " << m << "\n";
+    for (int idx = 0; idx < m; idx++) {
+        cout << "S" << (idx + 1) << " (древесное ребро ("
+             << treeEdges[idx].first << "," << treeEdges[idx].second << ")): ";
+        printCut(cuts[idx]);
+        cout << "\n";
+    }
+
+    // получение разрезов через симметрическую разность фундаментальных
+    cout << "\nполучение разреза через симметрическую разность фундаментальных.\n";
+    cout << "сколько фундаментальных разрезов скомбинировать? (0 - пропустить): ";
+    int cnt;
+    cin >> cnt;
+
+    if (cnt <= 0) return;
+
+    set<pair<int, int>> result;
+    bool ok = true;
+    for (int i = 0; i < cnt; i++) {
+        cout << "введите номер разреза (1.." << m << "): ";
+        int num;
+        cin >> num;
+        if (num < 1 || num > m) {
+            cout << "неверный номер\n";
+            ok = false;
+            break;
+        }
+        // симметрическая разность: ребро остаётся, если входит в нечётное число разрезов
+        for (const auto& e : cuts[num - 1]) {
+            if (result.count(e)) result.erase(e);
+            else result.insert(e);
+        }
+    }
+
+    if (!ok) return;
+
+    cout << "\nрезультат (симметрическая разность выбранных разрезов): ";
+    printCut(result);
+    cout << "\n";
+    if (result.empty())
+        cout << "(пустое множество — выбранные разрезы взаимно сократились)\n";
+}
+
 int main() {
     RandomGenerator rng;
     MyGraph graph;
@@ -1504,6 +1755,8 @@ int main() {
         cout << "11. найти число остовных деревьев по т. Кирхгофа\n";
         cout << "12. минимальный остов (алгоритм Краскала)\n";
         cout << "13. максимальное независимое множество вершин\n";
+        cout << "14. проверка на эйлеров граф\n";
+        cout << "15. фундаментальная система разрезов\n";
         cout << "0. выход\n";
         cout << "выбор: ";
         
@@ -1563,6 +1816,14 @@ int main() {
                 break;
             case 13:
                 if (graph.isGenerated) maxIndependentSet(graph);
+                else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 14:
+                if (graph.isGenerated) eulerCycle(graph);
+                else cout << "сначала сгенерируйте граф\n";
+                break;
+            case 15:
+                if (graph.isGenerated) fundamentalCuts(graph);
                 else cout << "сначала сгенерируйте граф\n";
                 break;
             case 0:
